@@ -2,13 +2,15 @@ import paho.mqtt.client as mqtt
 import json
 import time
 import SysInfo
+from cc1101 import CC1101
+
 
 #----------DATA STRUCTURES--------
 data = {"Data":{},
         "Network":{},
         }
 
-
+test = CC1101()
 
 #---------------GLOBAL VARIABLES---------------
 mqtt_username = "myuser"
@@ -103,9 +105,14 @@ while True:
         json_data = json.dumps(data)
         client.publish(topic_data, json_data)
         print(json_data)
+
+
+        write_test = test.test()
+        print(write_test)
+        print("radio_connection")
     elif start_time-current_time > 1 and flag_radio:
         current_time = start_time
-        print("radio_connection")
+
     # Blocking call that processes network traffic, dispatches callbacks and
     # handles reconnecting.
     # Other loop*() functions are available that give a threaded interface and a
