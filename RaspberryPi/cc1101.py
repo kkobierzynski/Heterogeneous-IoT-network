@@ -1,3 +1,5 @@
+import spidev
+
 class CC1101:
     #-------------Comand strobes--------------
     SRES = 0x30
@@ -64,17 +66,75 @@ class CC1101:
     TEST0 = 0x2E
 
     #-------------Status Registers Overview------------
-    PARTNUM = 0x31 #(0xF1) Wartości w nawiasie odpowiadają wartości końcowej nagłówka, te rejestry mogą być tylko odczytane (czyli R/W = 1) i burst musi sie równać 1
-    VERSION = 0x31 #(0xF1)
-    FREQEST = 0x32 #(0xF2)
-    LQI = 0x33 #(0xF3)
-    RSSI = 0x34 #(0xF4)
-    MARCSTATE = 0x35 #(0xF5) 
-    WORTIME1 = 0x36 #(0xF6) 
-    WORTIME0 = 0x37 #(0xF7) 
-    PKTSTATUS = 0x38 #(0xF8)
-    VCO_VC_DAC = 0x39 #(0xF9) 
-    TXBYTES = 0x3A #(0xFA)
-    RXBYTES = 0x3B #(0xFB)
-    RCCTRL1_STATUS = 0x3C #(0xFC)
-    RCCTRL0_STATUS = 0x3D #(0xFD) 
+    PARTNUM = 0xF1 
+    VERSION = 0xF1
+    FREQEST = 0xF2
+    LQI = 0xF3
+    RSSI = 0xF4
+    MARCSTATE = 0xF5
+    WORTIME1 = 0xF6
+    WORTIME0 = 0xF7
+    PKTSTATUS = 0xF8
+    VCO_VC_DAC = 0xF9
+    TXBYTES = 0xFA
+    RXBYTES = 0xFB
+    RCCTRL1_STATUS = 0xFC
+    RCCTRL0_STATUS = 0xFD
+
+    def __init__(self, bus = 0, device = 0, speed = 100000):
+        self.spi = spidev.SpiDev()
+        self.spi.open(bus, device)   #connected to 0,0 because GPIO8 (24) is used
+        self.spi.max_speed_hz = speed
+
+
+    def selfTest(self):
+        part_number = self.spi.xfer([0x80|0xF4,0x00])[1]
+        return part_number
+
+
+
+
+    def write_single_byte(self, address, data, prefix = 0x00):
+        return self.spi.xfer([address|prefix, data])
+
+    def write_burst_byte(self, address, data, prefix = 0x40):
+        pass
+
+    def read_single_byte(self, address, prefix = 0x80):
+        return self.spi.xfer([address|prefix, 0x00])
+
+    def read_burst_byte(self, address, data, prefix = 0xC0):
+        pass
+
+
+
+
+    def strobes_read(self, address, prefix = 0x80):
+        return self.spi.xfer([address|prefix])
+
+    def strobes_write(self, address, prefix = 0x00):
+        return self.spi.xfer([address|prefix])
+
+
+
+
+    def configuration(self, frequency): #będą tutaj takie zmienne jak częstotliwość moc itp
+        pass
+
+    def easy_configuration(self, version):   #tylko kilka wersji od razu gotowych, najlepiej by każda kolejna była lepsza np na większe odległosći i tłumienia
+        pass
+
+    def RSSI_value():
+        pass
+
+
+
+
+    def test(self):
+        x = self.read_single_byte(self.RXBYTES)
+        for i in range(len(x)):
+            x[i] = '{0:08b}'.format(x[i])
+        return x
+
+
+    #4 funkcje read write, 
