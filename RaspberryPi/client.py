@@ -11,6 +11,9 @@ data = {"Data":{},
         }
 
 test = CC1101()
+test.prepare()
+tescik_licznik = 0
+#test.strobes_write(0x35)
 
 #---------------GLOBAL VARIABLES---------------
 mqtt_username = "myuser"
@@ -107,8 +110,36 @@ while True:
         print(json_data)
 
 
-        write_test = test.test()
-        print(write_test)
+        #test.read_from_register_test()
+        #test.read_from_register_test2()
+        #test.read_from_register_test3()
+        #test.write_to_register_test()
+        test.txbytes_status()
+        test.write_burst_byte(0x3F,[0x03,0x01,0x01,0x01]) 
+        test.txbytes_status()
+        test.strobes_stx()
+        #print(test.read_test())
+        #test.write_to_register_test() 
+        test.txbytes_status()
+        test.txbytes_status()
+        test.txbytes_status()
+        test.marcstate_status()
+        #text = input("enter a string to convert into ascii values:")
+        #ascii_values = []
+        #for character in text:
+        #    ascii_values.append(ord(character))
+        #print(ascii_values)
+
+
+        #x = test.read_burst_byte(0x3F,65)
+        #print(x)
+        tescik_licznik = tescik_licznik + 1
+        #if tescik_licznik == 4:
+            #test.strobes_write(0x35)
+            #x = test.read_burst_byte(0x3F,16)
+            #print(x)
+        #test.strobes_write(0x35)
+        #test.strobes_write(0x35)
         print("radio_connection")
     elif start_time-current_time > 1 and flag_radio:
         current_time = start_time
