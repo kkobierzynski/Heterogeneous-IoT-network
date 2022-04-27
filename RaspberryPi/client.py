@@ -3,15 +3,15 @@ import json
 import time
 import SysInfo
 from cc1101 import CC1101
-
+import urllib.request
 
 #----------DATA STRUCTURES--------
 data = {"Data":{},
         "Network":{},
         }
 
-test = CC1101()
-test.prepare()
+radio_module = CC1101()
+radio_module.prepare()
 tescik_licznik = 0
 #test.strobes_write(0x35)
 
@@ -22,6 +22,7 @@ mqtt_broker_ip = "192.168.0.220"
 current_time = 0
 flag_connected_mqtt = False
 flag_radio = False
+first_client_establish = True
 serial = SysInfo.BoardInfo.serial()
 model = SysInfo.BoardInfo.model()
 
@@ -73,28 +74,42 @@ def on_disconnect(client, userdata, rc):
 
     flag_connected_mqtt = False
     flag_radio = True
+    print("cos",flag_connected_mqtt)
 
 
+def connect(host='http://google.com'):
+    try:
+        urllib.request.urlopen(host) #Python 3.x
+        return True
+    except:
+        return False
 
 #--------------------------------------------
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_message = on_message
-client.on_disconnect = on_disconnect
-client.username_pw_set(username=mqtt_username, password=mqtt_password)
-client.connect(mqtt_broker_ip, 1883, 60)
-client.loop_start()
+if connect():
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.on_disconnect = on_disconnect
+    client.username_pw_set(username=mqtt_username, password=mqtt_password)
+    client.connect(mqtt_broker_ip, 1883, 1)
+    client.loop_start()
+    first_client_establish = False
+else:
+    flag_radio = True
 
 while True:
     start_time = time.time() 
+    #print("przed if",flag_connected_mqtt)
+
 
     if start_time-current_time > 1 and flag_connected_mqtt:
         print("mqtt_connection")
         current_time = start_time
         temperature = 20    # ZAMIENIĆ NA ODCZYTYWANIE Z CZUJNIKA
         humidity=40     # ZAMIENIĆ NA DOCZYTYWANIE Z CZUJNIKA
-        rssi = SysInfo.NetworkInfo.rssi()
-        ssid = SysInfo.NetworkInfo.ssid() #wrzucić w miejsce ponownego połączenia z wifi, tutaj bez sensu marnotractwo zasobów by liczyć to co każdą sekundę
+        if flag_connected_mqtt:
+            rssi = SysInfo.NetworkInfo.rssi()
+            ssid = SysInfo.NetworkInfo.ssid() #wrzucić w miejsce ponownego połączenia z wifi, tutaj bez sensu marnotractwo zasobów by liczyć to co każdą sekundę
 
 
         data["Data"]["Temperature"] = temperature
@@ -110,39 +125,30 @@ while True:
         print(json_data)
 
 
-        #test.read_from_register_test()
-        #test.read_from_register_test2()
-        #test.read_from_register_test3()
-        #test.write_to_register_test()
-        test.txbytes_status()
-        test.write_burst_byte(0x3F,[0x03,0x01,0x01,0x01]) 
-        test.txbytes_status()
-        test.strobes_stx()
-        #print(test.read_test())
-        #test.write_to_register_test() 
-        test.txbytes_status()
-        test.txbytes_status()
-        test.txbytes_status()
-        test.marcstate_status()
-        #text = input("enter a string to convert into ascii values:")
-        #ascii_values = []
-        #for character in text:
-        #    ascii_values.append(ord(character))
-        #print(ascii_values)
 
-
-        #x = test.read_burst_byte(0x3F,65)
-        #print(x)
         tescik_licznik = tescik_licznik + 1
-        #if tescik_licznik == 4:
-            #test.strobes_write(0x35)
-            #x = test.read_burst_byte(0x3F,16)
-            #print(x)
-        #test.strobes_write(0x35)
-        #test.strobes_write(0x35)
-        print("radio_connection")
+
+
+
     elif start_time-current_time > 1 and flag_radio:
+        if first_client_establish and connect():
+            try:
+                client = mqtt.Client()
+                client.on_connect = on_connect
+                client.on_message = on_message
+                client.on_disconnect = on_disconnect
+                client.username_pw_set(username=mqtt_username, password=mqtt_password)
+                client.connect(mqtt_broker_ip, 1883, 1)
+                client.loop_start()
+                first_client_establish = False
+            except:
+                print("Mqtt Client establish error")
+
         current_time = start_time
+        data1 = [1,2]
+        data2 = 2
+        radio_module.transmit(data1)
+        print("radio_connection")
 
     # Blocking call that processes network traffic, dispatches callbacks and
     # handles reconnecting.
