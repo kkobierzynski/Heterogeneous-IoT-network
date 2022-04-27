@@ -1,4 +1,6 @@
+from logging import warning
 import spidev
+import time
 
 class CC1101:
     #-------------Comand strobes--------------
@@ -131,7 +133,7 @@ class CC1101:
         addresses = []
         for i in range(length):
             addresses.append((address + i*8)|prefix)
-        return self.spi.xfer(addresses)
+        return self.spi.xfer(addresses)[1:]
 
 
 
@@ -204,8 +206,12 @@ class CC1101:
             self.write_single_byte(self.TEST0, 0x09)
 
 
-    def RSSI_value():
-        pass
+    def RSSI_value(self, RSSI):
+            if RSSI >= 128:
+                RSSI_dBm = (RSSI-256)/2 - 74
+            elif RSSI < 128:
+                RSSI_dBm = RSSI/2 - 74
+            return RSSI_dBm
 
 
 
@@ -220,10 +226,18 @@ class CC1101:
         return x
 
     def txbytes_status(self):
-        x = self.read_single_byte(self.TXBYTES)
-        if self.debug == True:
-            self.decbinhex_read(x, self.TXBYTES)
+        x = self.read_single_byte(self.TXBYTES)[1]
+        x = x & 0x7f
         return x
+
+    def rxbytes_status(self):
+        x = self.read_single_byte(self.RXBYTES)[1]
+        x = x & 0x7f
+        return x
+
+    def pktlen(self):
+        information = self.read_single_byte(self.PKTLEN)[1]
+        return information
 
     def marcstate_status(self):         #Opisuje stan w jakim znajduje się w tym momencie moduł radiowy
         information = self.read_single_byte(self.MARCSTATE)[1]        #1 ponieważ chcemy tylko informacje z rejestru a nie chip status
@@ -330,8 +344,7 @@ class CC1101:
             pktctrl0_char_bin.append(sign)
         for sign in pktctrl1_bin:
             pktctrl1_char_bin.append(sign)
-        print(pktctrl0_char_bin)
-        print(pktctrl1_char_bin)
+
         if mode == "WHITE_DATA":  #Odczytanie bitu odnoszących się do WHITE_DATA
             mode_information = pktctrl0_char_bin[1]
             return mode_information
@@ -364,11 +377,136 @@ class CC1101:
             return "Wrong mode name"
 
 
-    def transmit(self, data):
-        pass
+    def transmit(self, data): #dodać jeszcze możłiwość asci
+        print("transmit data")
+        state = self.marcstate_status()
+        length_mode = self.packet_control("LENGTH_CONFIG")
+        data_length = len(data)
+        packet_length = self.pktlen()
+        packet_data = []
 
-    def receive():
-        pass
+        if state == 13 or state == 14 or state == 15:
+            warning = "WARNING - RX state in transmit mode is not supported. Data transfer not completed !!!!!"
+            return print(warning)
+
+        if length_mode == "00":    #Fixed packet length mode - info tylko w rejestrze
+            error = "Error - length mode is not yet supported. Data transfer not completed !!!!!"
+            return print(error)
+        elif length_mode == "01":    #Variable packet length mode - info także w pakiecie
+            if data_length>61 and self.packet_control("CRC_AUTOFLUSH")=="1":    #Dla bezpieczeństwa przyjęto 61 tak jak pisało w dokumentacji (63 - 2 bajty kontroli jakości), testy wykazały że działało do 62 bajtów danych tak ze po stronie odbiorczej w RXFIFO zajętych było 65 bajtów. Ograniczenie wynika z konieczności czyszczenia całęgo RXFIFO którym ma 64 bajty jezeli CRC wyjdzie niepoprawne
+                error = "ERROR - Moduł radiowy działa w trybie CRC_AUTOFLUSH. Maksymalna dozwolona liczba przesłanych bajtów wynosi 61, przesłane dane mają ",data_length," bajty. Nie zrealizowano przesłania danych!!!!"
+                return print(error)
+            if data_length>packet_length and self.packet_control("CRC_AUTOFLUSH")=="0":   #Jeżeli długość danych przekracza maksymalną długość pakietu i CRC_AUTOFLUSH jest wyłączony
+                error = "ERROR - Ilość bajtów danych przekracza maksymalny próg określony w rejestrze PKTLEN. Maksymalny rozmiar pakietu to ",packet_length," bajty. Pakiet ma rozmiar ",data_length,"bajtów. Nie zrealizowano przesłania danych!!!!"
+                return print(error)
+            packet_data.append(data_length)     #Adding necessary information about data length at the start of packet 
+            if self.packet_control("ADR_CHK") != "00":  #Checking if it is necessary to add addres byte at the start of packet
+                if data_length == packet_length:
+                    error = "ERROR - No space for adding 1 address byte. Release one byte in data, change size data size in register PKTLEN or change PKTCTRL1.ADR_CHK to 00 - no address check. Data transfer not completed !!!!!"
+                    return print(error)
+                packet_data.append(self.read_single_byte(self.ADDR)[1])
+                packet_data[0] = packet_data[0] + 1     #Increasing packet size by one, because of adding address
+            packet_data.extend(data)
+            print(packet_data)
+        elif length_mode == "10":   #Infinite packet length mode
+            error = "ERROR - tryb nie jest jeszcze obsługiwalny, proszę wybrać Variable packet length mode lub Fixed packet length mode. Nie zrealizowano przesłąnia danych!!!!!"
+            return print(error)
+        else:
+            error = "ERROR - błędna wartość rejestru PKTCTRL0.LENGTH_CONFIG. Nie zrealizowano przesłąnia danych!!!!!"
+            return print(error)
+
+        self.write_burst_byte(0x3F,packet_data)
+        time.sleep(0.001)
+
+        if state == 1:      #Checking if radio module is in IDLE state if yes it is necessary to change state to TX to send data saved in TXFIFO buffer
+            txbytes = self.txbytes_status()
+            print("przed STX",txbytes)
+            self.strobes_stx()
+            time.sleep(1)
+            txbytes = self.txbytes_status()
+            print("po STX",txbytes)
+            state = self.marcstate_status()
+            if state == 22:
+                error = "Error - TXFIFO_UNDERFLOW detected. TX FIFO buffer flush was made and state was changed to IDLE. Data transfer not completed !!!!!"
+                self.strobes_write(self.SFTX)
+                return print(error)
+            while txbytes != 0:     #waiting until all data from buffer is transmited 
+                time.sleep(0.001)
+                txbytes = self.txbytes_status()
+                print(txbytes)
+            if txbytes == 0:
+                success = "Data sent successfully !!!"
+                return print(success)
+            else:
+                error = "Error - Unknown error, some data may not have been sent"
+                return print(error)
+        elif state == 19 or state == 20 or state == 21:     #this state (when module is already in TX state) has not been tested, the code is based on assumptions after reading the documentation
+            txbytes = self.txbytes_status()
+            while txbytes != 0:     #waiting until all data from buffer is transmited 
+                time.sleep(0.001)
+                txbytes = self.txbytes_status()
+            if txbytes == 0:
+                success = "Data sent successfully !!!"
+                return print(success)
+            else:
+                error = "Error - Unknown error, some data may not have been sent"
+                return print(error)
+        elif state == 22:
+            error = "Error - TXFIFO_UNDERFLOW detected. TX FIFO buffer flush was made and state was changed to IDLE. Data transfer not completed !!!!!"
+            self.strobes_write(self.SFTX)
+            return print(error)
+        else:
+            error = "Error - the radio module took an unpredictable state value equal to ",state
+            return print(error)
+
+
+
+    def receive(self):
+        self.strobes_srx()
+        time.sleep(0.001)
+        rxbytes = self.rxbytes_status()
+        state = self.marcstate_status()
+        length_mode = self.packet_control("LENGTH_CONFIG")
+        append_status = self.packet_control("APPEND_STATUS")
+        data = []
+        if state == 17:
+            error = "Error - RXFIFO_OVERFLOW detected. RX FIFO buffer flush was made and state was changed to IDLE. Data reception not completed !!!!! "
+            self.strobes_write(self.SFRX)
+            return print(error)
+        if rxbytes != 0 and state != 17:
+            if length_mode == "00":    #Fixed packet length mode - info tylko w rejestrze
+                error = "Error - length mode is not yet supported. Data reception not completed !!!!!"
+                return print(error)
+            elif length_mode == "01":    #Variable packet length mode - info także w pakiecie
+                data_length = self.read_single_byte(self.RXFIFO)[1]
+                max_length = self.read_single_byte(self.PKTLEN)[1]
+                if data_length > max_length:
+                    error = "ERROR - Ilość bajtów danych przekracza maksymalny próg określony w rejestrze PKTLEN. Maksymalny rozmiar pakietu to ",max_length," bajty. Pakiet ma rozmiar ",data_length,"bajtów. Nie zrealizowano przesłania danych!!!!"
+                    return print(error)
+            elif length_mode == "10":   #Infinite packet length mode
+                error = "ERROR - tryb nie jest jeszcze obsługiwalny, proszę wybrać Variable packet length mode lub Fixed packet length mode. Nie zrealizowano przesłąnia danych!!!!!"
+                return print(error)
+            else:
+                error = "ERROR - błędna wartość rejestru PKTCTRL0.LENGTH_CONFIG. Nie zrealizowano przesłąnia danych!!!!!"
+                return print(error)
+            if self.packet_control("ADR_CHK") != "00":
+                print("This state wasn't checked. Please make sure that address information isnt in payload, what can make some problems in data analysis")
+
+            data.extend(self.read_burst_byte(self.RXFIFO, data_length+1))
+
+            if append_status == "1":
+                rssi = self.read_single_byte(self.RXFIFO)[1]
+                rssi = self.RSSI_value(rssi)
+                lqi_and_crc = self.read_single_byte(self.RXFIFO)[1]
+                lqi = lqi_and_crc & 0x7f
+                crc_ok = lqi_and_crc & 0x80
+                data.append(rssi)
+                data.append(lqi)
+                if crc_ok == 0:
+                    return print("CRC check not passed")
+
+
+            return data
 
 
 
