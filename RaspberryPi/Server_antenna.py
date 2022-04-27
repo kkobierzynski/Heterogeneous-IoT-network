@@ -3,19 +3,18 @@ import time
 import json
 
 data = {}
-test = CC1101()
-test.prepare()
+radio_module = CC1101()
+radio_module.prepare()
 
 
 for x in range(2000):
     data["Second"] = x
     json_data = json.dumps(data)
     print(json_data)
-    test.read_test()
-    if x%5 == 0:
-        test.strobes_write(0x34)
-    if x%5 == 4:
-        y = test.read_burst_byte(0x3F, 7)
-        print(y)
-    #test.read_from_register_test25()
+    rxbytes = radio_module.rxbytes_status()
+    print(rxbytes)
+    x = radio_module.receive()
+    rxbytes = radio_module.rxbytes_status()
+    print(rxbytes)
+    print(x)
     time.sleep(1)
