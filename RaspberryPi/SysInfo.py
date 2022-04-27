@@ -3,8 +3,12 @@ import subprocess
 
 class NetworkInfo:
     def ssid():
-        #save command output to variable
-        ssid = subprocess.check_output(['sudo', 'iwgetid'])
+        try:
+            #save command output to variable
+            ssid = subprocess.check_output(['sudo', 'iwgetid'])
+        except:
+            ssid = "Not connected"
+            return ssid
         ssid = ssid.split()
         ssid = ssid[1]
         ssid = ssid.decode("utf-8") #convert byte to string
@@ -34,7 +38,11 @@ class NetworkInfo:
             rssi_string = ""
             for character in rssi:  #changing list to string
                 rssi_string += character
-            rssi = int(rssi_string)
+            try:
+                rssi = int(rssi_string)
+            except:
+                rssi = -100
+                return rssi
             return rssi
 
 class BoardInfo:
