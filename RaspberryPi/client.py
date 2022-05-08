@@ -4,6 +4,7 @@ import time
 import SysInfo
 from cc1101 import CC1101
 import urllib.request
+import random
 
 #----------DATA STRUCTURES--------
 data = {"Data":{},
@@ -119,6 +120,7 @@ while True:
         data["Network"]["Signal_strength"] = rssi
         data["SensorID"] = serial
         data["Sensor_Model"] = model
+        data["Source"] = "MQTT"
 
         json_data = json.dumps(data)
         client.publish(topic_data, json_data)
@@ -145,10 +147,61 @@ while True:
                 print("Mqtt Client establish error")
 
         current_time = start_time
-        data1 = [1,2]
-        data2 = 2
-        radio_module.transmit(data1)
-        print("radio_connection")
+
+        radio_data = []
+        ascii_antena_name = []
+        ascii_serial_name = []
+        ip_number_data = []
+        ip_number = ""
+        counter = 0
+        temperature = random.randint(-30, 90)    # ZAMIENIĆ NA ODCZYTYWANIE Z CZUJNIKA
+        converted_temp = temperature + 100
+        humidity=random.randint(0, 100)     # ZAMIENIĆ NA DOCZYTYWANIE Z CZUJNIKA
+        reserved_data = [0,0,0,0,0,0,0,0]
+
+        antena_name = "cc1101"
+        for character in antena_name:
+            counter+=1
+            if counter <= 10:
+                ascii_antena_name.append(ord(character))
+            else:
+                break
+        if len(antena_name) < 10:
+            for x in range(0,10-len(antena_name)):
+                ascii_antena_name.append(0)
+        counter = 0
+
+        for character in mqtt_broker_ip:
+            if character != ".":
+                ip_number = ip_number + character
+            else:
+                ip_number_data.append(int(ip_number))
+                ip_number = ""
+        ip_number_data.append(int(ip_number))
+
+        for character in serial:
+            counter+=1
+            if counter <= 16:
+                ascii_serial_name.append(ord(character))
+            else:
+                break
+        if len(serial) < 16:
+            for x in range(0,16-len(serial)):
+                ascii_serial_name.append(0)
+        counter = 0
+
+        radio_data.append(converted_temp)
+        radio_data.append(humidity)
+        radio_data.extend(reserved_data)
+        radio_data.extend(ascii_antena_name)
+        radio_data.extend(ip_number_data)
+        radio_data.extend(ascii_serial_name)
+        radio_data_len = len(radio_data)
+        if radio_data_len < 64:
+            radio_module.transmit(radio_data)
+            print("radio_connection")
+        else:
+            print("Actually currently sending over 64 bytes causes errors, the problem will be fixed in the future please reduce amount of sending data")
 
     # Blocking call that processes network traffic, dispatches callbacks and
     # handles reconnecting.
