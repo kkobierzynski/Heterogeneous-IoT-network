@@ -92,7 +92,7 @@ class CC1101:
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)   #connected to 0,0 because GPIO8 (24) is used
         self.spi.max_speed_hz = speed
-        self.debug = True
+        self.debug = False
 
 
 
@@ -500,10 +500,12 @@ class CC1101:
                 lqi_and_crc = self.read_single_byte(self.RXFIFO)[1]
                 lqi = lqi_and_crc & 0x7f
                 crc_ok = lqi_and_crc & 0x80
+                #print(crc_ok)
                 data.append(rssi)
                 data.append(lqi)
-                if crc_ok == 0:
-                    return print("CRC check not passed")
+                data.append(crc_ok)
+                #if crc_ok == 0:
+                #    return print("CRC check not passed")
 
 
             return data
