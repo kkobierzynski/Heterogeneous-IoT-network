@@ -13,6 +13,9 @@ data = {"Data":{},
 
 radio_module = CC1101()
 radio_module.prepare()
+#radio_module.write_single_byte(0x0F, 0x62)
+#radio_module.write_single_byte(0x0E, 0xA7)
+#radio_module.write_single_byte(0x0D, 0x10)
 tescik_licznik = 0
 #test.strobes_write(0x35)
 
@@ -21,12 +24,12 @@ mqtt_username = "myuser"
 mqtt_password = "raspberrypi"
 mqtt_broker_ip = "192.168.0.220"
 current_time = 0
+mqtt_counter = 0
 flag_connected_mqtt = False
 flag_radio = False
 first_client_establish = True
 serial = SysInfo.BoardInfo.serial()
 model = SysInfo.BoardInfo.model()
-
 
 #---------TOPICS-----------
 topic_data = "kitchen/data"
@@ -92,16 +95,20 @@ if connect():
     client.on_message = on_message
     client.on_disconnect = on_disconnect
     client.username_pw_set(username=mqtt_username, password=mqtt_password)
-    client.connect(mqtt_broker_ip, 1883, 1)
-    client.loop_start()
-    first_client_establish = False
+    try:    #na wypadek jezeli klient ma połączenie z internetem ale serwer nie działa 
+        client.connect(mqtt_broker_ip, 1883, 1)
+        client.loop_start()
+        first_client_establish = False
+    except:
+        first_client_establish = True
+        flag_radio = True
 else:
     flag_radio = True
 
 while True:
     start_time = time.time() 
     #print("przed if",flag_connected_mqtt)
-
+    
 
     if start_time-current_time > 1 and flag_connected_mqtt:
         print("mqtt_connection")
@@ -134,20 +141,23 @@ while True:
 
     elif start_time-current_time > 1 and flag_radio:
         if first_client_establish and connect():
-            try:
-                client = mqtt.Client()
-                client.on_connect = on_connect
-                client.on_message = on_message
-                client.on_disconnect = on_disconnect
-                client.username_pw_set(username=mqtt_username, password=mqtt_password)
-                client.connect(mqtt_broker_ip, 1883, 1)
-                client.loop_start()
-                first_client_establish = False
-            except:
-                print("Mqtt Client establish error")
+            mqtt_counter = mqtt_counter + 1
+            if mqtt_counter == 1000:
+                try:
+                    client = mqtt.Client()
+                    client.on_connect = on_connect
+                    client.on_message = on_message
+                    client.on_disconnect = on_disconnect
+                    client.username_pw_set(username=mqtt_username, password=mqtt_password)
+                    client.connect(mqtt_broker_ip, 1883, 1)
+                    client.loop_start()
+                    first_client_establish = False
+                except:
+                    print("Mqtt Client establish error")
+                    first_client_establish = True
+                    mqtt_counter = 0
 
         current_time = start_time
-
         radio_data = []
         ascii_antena_name = []
         ascii_serial_name = []
@@ -202,7 +212,11 @@ while True:
             print("radio_connection")
         else:
             print("Actually currently sending over 64 bytes causes errors, the problem will be fixed in the future please reduce amount of sending data")
-
+        
+        #received_data = radio_module.receive()
+        #time.sleep(1)
+        #print(received_data)
+        
     # Blocking call that processes network traffic, dispatches callbacks and
     # handles reconnecting.
     # Other loop*() functions are available that give a threaded interface and a
