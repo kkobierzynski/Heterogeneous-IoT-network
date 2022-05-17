@@ -384,10 +384,14 @@ class CC1101:
         data_length = len(data)
         packet_length = self.pktlen()
         packet_data = []
+        #print(state)
 
         if state == 13 or state == 14 or state == 15:
             warning = "WARNING - RX state in transmit mode is not supported. Data transfer not completed !!!!!"
-            return print(warning)
+            self.strobes_write(self.SIDLE)
+            state = self.marcstate_status()
+            print("state->",state)
+            print(warning)
 
         if length_mode == "00":    #Fixed packet length mode - info tylko w rejestrze
             error = "Error - length mode is not yet supported. Data transfer not completed !!!!!"
@@ -462,13 +466,21 @@ class CC1101:
 
 
     def receive(self):
-        self.strobes_srx()
-        time.sleep(0.001)
-        rxbytes = self.rxbytes_status()
         state = self.marcstate_status()
+        print("przed",state)
+        self.strobes_srx()
+        time.sleep(4)
+        rxbytes = self.rxbytes_status() 
+        state = self.marcstate_status()
+        if state == 13 and rxbytes != 43 and rxbytes != 0:
+            print("wszedłem!!")
+            time.sleep(1)
+            rxbytes = self.rxbytes_status() 
         length_mode = self.packet_control("LENGTH_CONFIG")
         append_status = self.packet_control("APPEND_STATUS")
         data = []
+        print("po",state)
+        print(rxbytes)
         if state == 17:
             error = "Error - RXFIFO_OVERFLOW detected. RX FIFO buffer flush was made and state was changed to IDLE. Data reception not completed !!!!! "
             self.strobes_write(self.SFRX)
@@ -479,6 +491,9 @@ class CC1101:
                 return print(error)
             elif length_mode == "01":    #Variable packet length mode - info także w pakiecie
                 data_length = self.read_single_byte(self.RXFIFO)[1]
+                state = self.marcstate_status()
+                print("popo",state)
+                print(data_length)
                 max_length = self.read_single_byte(self.PKTLEN)[1]
                 if data_length > max_length:
                     error = "ERROR - Ilość bajtów danych przekracza maksymalny próg określony w rejestrze PKTLEN. Maksymalny rozmiar pakietu to ",max_length," bajty. Pakiet ma rozmiar ",data_length,"bajtów. Nie zrealizowano przesłania danych!!!!"
@@ -500,15 +515,31 @@ class CC1101:
                 lqi_and_crc = self.read_single_byte(self.RXFIFO)[1]
                 lqi = lqi_and_crc & 0x7f
                 crc_ok = lqi_and_crc & 0x80
-                #print(crc_ok)
+                print("crc",crc_ok)
                 data.append(rssi)
                 data.append(lqi)
                 data.append(crc_ok)
                 #if crc_ok == 0:
                 #    return print("CRC check not passed")
 
-
+            #self.strobes_write(self.SIDLE)
+            #time.sleep(0.0001)
+            #self.strobes_write(self.SFRX)
+            #time.sleep(0.0001)
+            #self.strobes_srx()
+            #time.sleep(0.0001)
+            state = self.marcstate_status()
+            print(state)
             return data
+        
+        else:
+            state = self.marcstate_status()
+            print(state)
+            self.strobes_write(self.SIDLE)
+            time.sleep(0.0001)
+            self.strobes_write(self.SFRX)
+            time.sleep(0.0001)
+            pass
 
 
 
