@@ -170,9 +170,9 @@ class CC1101:
             self.write_single_byte(self.CHANNR, 0x00)
             self.write_single_byte(self.FSCTRL1, 0x06)
             self.write_single_byte(self.FSCTRL0, 0x00)
-            self.write_single_byte(self.FREQ2, 0x21)
-            self.write_single_byte(self.FREQ1, 0x62)
-            self.write_single_byte(self.FREQ0, 0x76)
+            self.write_single_byte(self.FREQ2, 0x10)
+            self.write_single_byte(self.FREQ1, 0xA7)
+            self.write_single_byte(self.FREQ0, 0x62)
             self.write_single_byte(self.MDMCFG4, 0xF5)
             self.write_single_byte(self.MDMCFG3, 0x83)
             self.write_single_byte(self.MDMCFG2, 0x13)
@@ -205,6 +205,15 @@ class CC1101:
             self.write_single_byte(self.TEST1, 0x35)
             self.write_single_byte(self.TEST0, 0x09)
 
+    def frequency_433(self):
+        self.write_single_byte(self.FREQ0, 0x62)
+        self.write_single_byte(self.FREQ1, 0xA7)
+        self.write_single_byte(self.FREQ2, 0x10)
+
+    def frequency_868(self):
+        self.write_single_byte(self.FREQ0, 0x76)
+        self.write_single_byte(self.FREQ1, 0x62)
+        self.write_single_byte(self.FREQ2, 0x21)
 
     def RSSI_value(self, RSSI):
             if RSSI >= 128:
@@ -378,7 +387,7 @@ class CC1101:
 
 
     def transmit(self, data): #dodać jeszcze możłiwość asci
-        print("transmit data")
+        #print("transmit data")
         state = self.marcstate_status()
         length_mode = self.packet_control("LENGTH_CONFIG")
         data_length = len(data)
@@ -390,8 +399,8 @@ class CC1101:
             warning = "WARNING - RX state in transmit mode is not supported. Data transfer not completed !!!!!"
             self.strobes_write(self.SIDLE)
             state = self.marcstate_status()
-            print("state->",state)
-            print(warning)
+            #print("state->",state)
+            #print(warning)
 
         if length_mode == "00":    #Fixed packet length mode - info tylko w rejestrze
             error = "Error - length mode is not yet supported. Data transfer not completed !!!!!"
@@ -411,7 +420,7 @@ class CC1101:
                 packet_data.append(self.read_single_byte(self.ADDR)[1])
                 packet_data[0] = packet_data[0] + 1     #Increasing packet size by one, because of adding address
             packet_data.extend(data)
-            print(packet_data)
+            #print(packet_data)
         elif length_mode == "10":   #Infinite packet length mode
             error = "ERROR - tryb nie jest jeszcze obsługiwalny, proszę wybrać Variable packet length mode lub Fixed packet length mode. Nie zrealizowano przesłąnia danych!!!!!"
             return print(error)
@@ -424,11 +433,11 @@ class CC1101:
 
         if state == 1:      #Checking if radio module is in IDLE state if yes it is necessary to change state to TX to send data saved in TXFIFO buffer
             txbytes = self.txbytes_status()
-            print("przed STX",txbytes)
+            #print("przed STX",txbytes)
             self.strobes_stx()
             time.sleep(1)
             txbytes = self.txbytes_status()
-            print("po STX",txbytes)
+            #print("po STX",txbytes)
             state = self.marcstate_status()
             if state == 22:
                 error = "Error - TXFIFO_UNDERFLOW detected. TX FIFO buffer flush was made and state was changed to IDLE. Data transfer not completed !!!!!"
@@ -437,10 +446,11 @@ class CC1101:
             while txbytes != 0:     #waiting until all data from buffer is transmited 
                 time.sleep(0.001)
                 txbytes = self.txbytes_status()
-                print(txbytes)
+                #print(txbytes)
             if txbytes == 0:
                 success = "Data sent successfully !!!"
-                return print(success)
+                #print(success)
+                return
             else:
                 error = "Error - Unknown error, some data may not have been sent"
                 return print(error)
@@ -467,20 +477,20 @@ class CC1101:
 
     def receive(self):
         state = self.marcstate_status()
-        print("przed",state)
+        #print("przed",state)
         self.strobes_srx()
         time.sleep(4)
         rxbytes = self.rxbytes_status() 
         state = self.marcstate_status()
         if state == 13 and rxbytes != 43 and rxbytes != 0:
-            print("wszedłem!!")
+            #print("wszedłem!!")
             time.sleep(1)
             rxbytes = self.rxbytes_status() 
         length_mode = self.packet_control("LENGTH_CONFIG")
         append_status = self.packet_control("APPEND_STATUS")
         data = []
-        print("po",state)
-        print(rxbytes)
+        #print("po",state)
+        #print(rxbytes)
         if state == 17:
             error = "Error - RXFIFO_OVERFLOW detected. RX FIFO buffer flush was made and state was changed to IDLE. Data reception not completed !!!!! "
             self.strobes_write(self.SFRX)
@@ -492,8 +502,8 @@ class CC1101:
             elif length_mode == "01":    #Variable packet length mode - info także w pakiecie
                 data_length = self.read_single_byte(self.RXFIFO)[1]
                 state = self.marcstate_status()
-                print("popo",state)
-                print(data_length)
+                #print("popo",state)
+                #print(data_length)
                 max_length = self.read_single_byte(self.PKTLEN)[1]
                 if data_length > max_length:
                     error = "ERROR - Ilość bajtów danych przekracza maksymalny próg określony w rejestrze PKTLEN. Maksymalny rozmiar pakietu to ",max_length," bajty. Pakiet ma rozmiar ",data_length,"bajtów. Nie zrealizowano przesłania danych!!!!"
@@ -515,7 +525,7 @@ class CC1101:
                 lqi_and_crc = self.read_single_byte(self.RXFIFO)[1]
                 lqi = lqi_and_crc & 0x7f
                 crc_ok = lqi_and_crc & 0x80
-                print("crc",crc_ok)
+                #print("crc",crc_ok)
                 data.append(rssi)
                 data.append(lqi)
                 data.append(crc_ok)
@@ -529,12 +539,12 @@ class CC1101:
             #self.strobes_srx()
             #time.sleep(0.0001)
             state = self.marcstate_status()
-            print(state)
+            #print(state)
             return data
         
         else:
             state = self.marcstate_status()
-            print(state)
+            #print(state)
             self.strobes_write(self.SIDLE)
             time.sleep(0.0001)
             self.strobes_write(self.SFRX)
