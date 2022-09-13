@@ -13,10 +13,8 @@ data = {"Data":{},
 
 radio_module = CC1101()
 radio_module.prepare()
-#radio_module.write_single_byte(0x0F, 0x62)
-#radio_module.write_single_byte(0x0E, 0xA7)
-#radio_module.write_single_byte(0x0D, 0x10)
 tescik_licznik = 0
+freq = 433
 #test.strobes_write(0x35)
 
 #---------------GLOBAL VARIABLES---------------
@@ -24,16 +22,20 @@ mqtt_username = "myuser"
 mqtt_password = "raspberrypi"
 mqtt_broker_ip = "192.168.0.220"
 current_time = 0
+current_time_radio_serv = 0   #ponieważ nie chcemy by warunek został spełniony od razu, tylko jezeli minie określony czas -> zmiana częstotliwości. Dlatego nie przypisujemy 0
 mqtt_counter = 0
 flag_connected_mqtt = False
 flag_radio = False
 first_client_establish = True
+flag_radio_mode_config = True
+freq_conn_test = False
+freq_conn_test_counter = 0
 serial = SysInfo.BoardInfo.serial()
 model = SysInfo.BoardInfo.model()
 
 #---------TOPICS-----------
-topic_data = "kitchen/data"
-topic_sub_led = "kitchen/led"
+topic_data = "RaspberryPi3/data"
+topic_sub_led = "RaspberryPi3/led"
 
 
 
@@ -107,14 +109,17 @@ else:
 
 while True:
     start_time = time.time() 
+    start_time_radio_serv = time.time()
     #print("przed if",flag_connected_mqtt)
     
 
-    if start_time-current_time > 1 and flag_connected_mqtt:
+    if start_time-current_time > 5 and flag_connected_mqtt:
         print("mqtt_connection")
         current_time = start_time
         temperature = 20    # ZAMIENIĆ NA ODCZYTYWANIE Z CZUJNIKA
         humidity=40     # ZAMIENIĆ NA DOCZYTYWANIE Z CZUJNIKA
+        flag_radio_mode_config = True
+
         if flag_connected_mqtt:
             rssi = SysInfo.NetworkInfo.rssi()
             ssid = SysInfo.NetworkInfo.ssid() #wrzucić w miejsce ponownego połączenia z wifi, tutaj bez sensu marnotractwo zasobów by liczyć to co każdą sekundę
@@ -140,9 +145,15 @@ while True:
 
 
     elif start_time-current_time > 1 and flag_radio:
+        if flag_radio_mode_config:
+            current_time_radio_serv = time.time()
+            flag_radio_mode_config = False
+            freq_conn_test = False
+            freq_conn_test_counter = 0
+
         if first_client_establish and connect():
             mqtt_counter = mqtt_counter + 1
-            if mqtt_counter == 1000:
+            if mqtt_counter == 20:
                 try:
                     client = mqtt.Client()
                     client.on_connect = on_connect
@@ -213,9 +224,53 @@ while True:
         else:
             print("Actually currently sending over 64 bytes causes errors, the problem will be fixed in the future please reduce amount of sending data")
         
-        #received_data = radio_module.receive()
+        #Próba odbiotu informacji od serwera
+        received_data = radio_module.receive()
+        if received_data != None:
+            print(received_data)
+            received_data = received_data[:-3]
+            print(received_data)
+        if received_data == [0,1,2,3,4,5]:
+            print("Server radio connection reset")
+            current_time_radio_serv = start_time_radio_serv
+        if received_data == [4,4,4,4,4,4]:
+            if freq != 433:
+                radio_module.frequency_433()
+                freq = 433
+                freq_conn_test = True
+        if received_data == [8,8,8,8,8,8]:
+            if freq != 868:
+                radio_module.frequency_868()
+                freq = 868
+                freq_conn_test = True
+
+        if freq_conn_test:
+            if received_data == [1,1,1,1,1,1]:
+                freq_conn_test = False
+                freq_conn_test_counter = 0
+            else:
+                freq_conn_test_counter = freq_conn_test_counter + 1
+            if freq_conn_test_counter == 5:
+                if freq == 433:
+                    radio_module.frequency_868()
+                    freq = 868
+                elif freq == 868:
+                    radio_module.frequency_433()
+                    freq = 433
+        
+        # Jezeli brak informacji od serwera po 180 sekundach zmień częstotliwość
+        if start_time_radio_serv - current_time_radio_serv > 180:
+            current_time_radio_serv = start_time_radio_serv
+            if freq == 433:
+                radio_module.frequency_868()
+                freq = 868
+            elif freq == 868:
+                radio_module.frequency_433()
+                freq = 433
+            #print("Zmieniono częstotliwość")
+
         #time.sleep(1)
-        #print(received_data)
+        print(received_data)
         
     # Blocking call that processes network traffic, dispatches callbacks and
     # handles reconnecting.
